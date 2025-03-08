@@ -1,0 +1,10 @@
+# Exclude temp directory
+temp/
+
+# Exclude contents of Profile_images, but keep the directory itself
+Profile_images/*
+!Profile_images/.gitkeep
+
+# Exclude contents of Cache, but keep the directory itself
+Cache/*
+!Cache/.gitkeep

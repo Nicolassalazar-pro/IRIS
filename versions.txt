@@ -1,0 +1,41 @@
+
+Module Version Checker
+====================
+
+Python version: 3.11.8 (tags/v3.11.8:db85d51, Feb  6 2024, 22:03:32) [MSC v.1937 64 bit (AMD64)]
+
+Imported Modules:
+-----------------
+watchdog:           6.0.0
+watchdog.events:    6.0.0
+watchdog.observers: 6.0.0
+contextlib:         Version not found
+sklearn:            1.6.1
+sklearn.cluster:    Version not found
+pymongo:            4.11.1
+sounddevice:        0.5.1
+pathlib:            Version not found
+face_recognition:   1.3.0
+PIL:                11.1.0
+numpy:              2.1.3
+threading:          Version not found
+keyboard:           0.13.5
+datetime:           Version not found
+hashlib:            Version not found
+logging:            0.5.1.2
+pyttsx3:            2.98
+whisper:            20240930
+string:             Version not found
+random:             Version not found
+pickle:             Version not found
+ollama:             0.4.7
+msvcrt:             Version not found
+queue:              Version not found
+torch:              2.6.0+cu118
+json:               2.0.9
+time:               Version not found
+wave:               0.0.2
+pytz:               2025.1
+cv2:                4.11.0
+sys:                3.11.8 (tags/v3.11.8:db85d51, Feb  6 2024, 22:03:32) [MSC v.1937 64 bit (AMD64)]
+os:                 Version not found

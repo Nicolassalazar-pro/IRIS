@@ -12,6 +12,7 @@ import contextlib
 import threading
 import keyboard
 import datetime
+import requests
 import hashlib
 import logging
 import pyttsx3
@@ -47,7 +48,7 @@ try:
     with open(CONFIG_FILE, 'r') as file:
         config = eval(file.read())
         if 'MONGODB_URI' not in config:
-            raise ValueError("MONGODB_URI not found in config.txt")
+            raise ValueError("MONGODB_URI not found in config.py")
 except FileNotFoundError:
     logging.error(f"{CONFIG_FILE} NotFound - please download or Create one nerd")
     exit(1)
@@ -1019,6 +1020,9 @@ def face_detect(camera, face_encodings, face_identifiers, awaiting_first_enrollm
             cv2.imshow("Face Recognition System", display_frame)
             cv2.waitKey(1)
 
+        if keyboard.is_pressed('esc'):
+            break
+
 
 def initialize_audio():
     """Initialize audio device with proper error handling"""
@@ -1050,10 +1054,13 @@ def get_ollama_response(messages,collection):
 
         Current_Person_Context = collection.find_one({"_id": Current_Person})
 
+        Info_Context = f'This is your context window in regards to who you are speaking to. First name: {Current_Person_Context["first_name"]}; Last name: {Current_Person_Context["last_name"]}; Age : {Current_Person_Context["age"]}.'
+        General_Context = f'This is your context window in regards about the person you are speaking to. Context:{Current_Person_Context["context"]}'
+
         context_messages = [
-            {"role": "system", "content": f"This is your context window in regards to who you are speaking to. First name: {Current_Person_Context["first_name"]}; Last name: {Current_Person_Context["last_name"]}; Age : {Current_Person_Context["age"]}."},
-            {"role": "system", "content": "If any of the previous fields are not filled, you should prompt the person for the information, But you can not prompt the user for more than one piece of information per question asked."},
-            {"role": "system", "content": f"This is your context window in regards about the person you are speaking to. Context:{Current_Person_Context["context"]}"},
+            {"role": "system", "content": Info_Context},
+            {"role": "system", "content": 'If any of the previous fields are not filled, you should prompt the person for the information, But you can not prompt the user for more than one piece of information per question asked.'},
+            {"role": "system", "content": General_Context},
             {"role": "system", "content": PERSONALITY},
             {"role": "system", "content": "Remember: Keep responses short and direct. No emojis or multiple questions."},
             *messages
@@ -1078,7 +1085,7 @@ def get_ollama_response(messages,collection):
     except Exception as e:
         return f"Looks like we hit a snag: {str(e)}"
 
-def audio_callback(indata):
+def audio_callback(indata, arg2, arg3, arg4):
     """Callback for audio recording"""
     if keyboard.is_pressed('space'):
         q.put(bytes(indata))
@@ -1120,13 +1127,54 @@ def process_audio():
         return text.strip()
     return ""
 
-def TTS(text):
-    """Text-to-speech conversion"""
+def TTS(text, temp_filename = "temp_audio.wav"):
+    """
+    Convert text to speech and save it as a WAV file
+    
+    Args:
+        text (str): The text to convert to speech
+        output_filename (str): The filename to save the speech to (default: output.wav)
+    
+    Returns:
+        str: The path to the saved file
+    """
+    RETURN_STATE = False
+
     engine = pyttsx3.init()
+    
+    # Configure voice properties
     engine.setProperty('rate', 150)
-    engine.setProperty('volume', .9)
-    engine.say(text)
+    engine.setProperty('volume', 0.9)  
+    
+    # Get the absolute path for the output file
+    output_path = os.path.abspath(temp_filename)
+    
+    # Save the speech to a file
+    engine.save_to_file(text, output_path)
     engine.runAndWait()
+    
+    url = config["UI_URL"]
+    temp_audio = open(output_path, 'rb')
+    files = {'audio': ('audio.wav', temp_audio, 'audio.wav')}
+
+    try:
+        print("Sending audio to visualizer...")
+        response = requests.post(url, files=files)
+
+        if response.status_code != 200:
+            print(f"Error sending audio: {response.status_code} - {response.text}")
+            RETURN_STATE = False
+        
+        print(f"Audio successfully sent to visualizer: {response.text}")
+        RETURN_STATE = True
+    except Exception as e:
+        print(f"Exception while sending audio: {e}")
+        RETURN_STATE = False
+
+    temp_audio.close()
+    os.remove(output_path)
+
+    return RETURN_STATE
 
 def LLM(stream,collection):
 
@@ -1160,8 +1208,6 @@ def LLM(stream,collection):
                         {"role": m["role"], "content": m["content"]} 
                         for m in chat_history
                     ]
-
-                    logging.info(f"Messages:{messages}")
                     
                     print("Friday's thinking...")
                     response_start_time = time.time()
@@ -1187,10 +1233,9 @@ def LLM(stream,collection):
                     print("\nReady for next input! (Hold SPACE to speak)")
             
             if keyboard.is_pressed('esc'):
-                print("\nFriday signing off...")
                 break
             
-            time.sleep(0.01)
+            time.sleep(0.1)
 
 def main():
     mongo_uri = config['MONGODB_URI']
@@ -1268,10 +1313,11 @@ def main():
     print("\nFriday's ready to chat!")
 
     # Load existing chat history
-    with open('chat_history.json', 'r', encoding='utf-8') as f:
-        chat_history.extend(json.load(f))
-
-
+    try:
+        with open('chat_history.json', 'r', encoding='utf-8') as f:
+            chat_history.extend(json.load(f))
+    except FileNotFoundError:
+        pass
 
     Clustering_Module = Observer()
     Clustering_Module.schedule(event_handler, watch_path, recursive=False)
@@ -1285,17 +1331,21 @@ def main():
     FaceID_Module.start()
     LLM_Module.start()
 
-    try:
-        while True:
-            time.sleep(1)     
-    except keyboard.is_pressed('esc'):
-        logging.info("Stopping everything")
-        camera.release()
-        cv2.destroyAllWindows()
-        Clustering_Module.stop()
-        Clustering_Module.join()
-        FaceID_Module.join()
-        LLM_Module.join()
+    while True:
+        time.sleep(1)     
+        if keyboard.is_pressed('esc'):
+            logging.info("Stopping everything")
+            Clustering_Module.stop()
+            Clustering_Module.join()
+            FaceID_Module.join()
+            LLM_Module.join()
+            camera.release()
+            cv2.destroyAllWindows()
+            sys.exit()
+            quit()
+            os.system("cls")
+            break
 
 if __name__ == "__main__":
     main()
+

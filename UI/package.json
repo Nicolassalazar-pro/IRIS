@@ -1,15 +1,16 @@
+
 {
   "name": "iris",
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "start:frontend": "parcel ./src/index.html --host 0.0.0.0 --port 8008",
+    "start:frontend": "parcel ./src/index.html --host 0.0.0.0 --port 8008 --https --cert ./src/server/certs/localhost+2.pem --key ./src/server/certs/localhost+2-key.pem",
     "start:server": "node ./src/server/server.js",
     "start:flask": "python ../V3/LLM.py",
     "start": "concurrently --kill-others \"npm run start:flask\" \"npm run start:frontend\" \"npm run start:server\""
   },
   "keywords": [],
-  "author": "",
+  "author": "Nicolas Salazar",
   "license": "ISC",
   "dependencies": {
     "body-parser": "^1.20.3",

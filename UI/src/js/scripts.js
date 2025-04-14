@@ -446,8 +446,8 @@ const sendAudioToServer = (wavBlob) => {
   };
   console.log('File being sent:', fileInfo);
   
-  // Send to the Flask server
-  fetch('http://localhost:2002/audio', {
+  // Send to the Flask server - Use HTTPS here
+  fetch('https://10.53.1.209:2002/audio', {
     method: 'POST',
     body: formData
   })
@@ -471,47 +471,13 @@ const sendAudioToServer = (wavBlob) => {
   });
 };
 
-// Event listeners for keyboard and mouse
-window.addEventListener('keydown', (event) => {
-  if (event.code === 'Space' && !isRecording) {
-    event.preventDefault(); // Prevent scrolling
-    startRecording();
-  }
-});
-
-window.addEventListener('keyup', (event) => {
-  if (event.code === 'Space' && isRecording) {
-    stopRecording();
-  }
-});
-
-renderer.domElement.addEventListener('mousedown', (event) => {
-  if (event.button === 0 && !isRecording) { // Left mouse button
-    startRecording();
-  }
-});
-
-renderer.domElement.addEventListener('mouseup', (event) => {
-  if (event.button === 0 && isRecording) { // Left mouse button
-    stopRecording();
-  }
-});
-
-// Handle case when mouse leaves window while recording
-window.addEventListener('mouseleave', () => {
-  if (isRecording) {
-    stopRecording();
-  }
-});
-
-// Function to request audio deletion
 function requestAudioDeletion() {
   // Only delete once
   if (!isProcessingAudio) return;
   
   console.log("Requesting audio deletion");
   
-  fetch('http://localhost:6969/delete-audio', {
+  fetch('https://10.53.1.209:6969/delete-audio', {
     method: 'POST'
   })
   .then(() => {
@@ -541,7 +507,7 @@ function loadAndPlayAudio(audioId) {
   initAudioContext();
   
   const audioLoader = new THREE.AudioLoader();
-  audioLoader.load(`http://localhost:6969/uploads/audio.wav?t=${audioId}`, 
+  audioLoader.load(`https://10.53.1.209:6969/uploads/audio.wav?t=${audioId}`, 
     // Success callback
     function(buffer) {
       console.log("Audio loaded successfully");
@@ -593,7 +559,7 @@ function checkForNewAudio() {
     return;
   }
   
-  fetch('http://localhost:6969/uploads/audio.wav', { 
+  fetch('https://10.53.1.209:6969/uploads/audio.wav', { 
     method: 'HEAD',
     cache: 'no-store'
   })
@@ -607,6 +573,40 @@ function checkForNewAudio() {
       // File not found is normal and expected after deletion
     });
 }
+
+
+// Event listeners for keyboard and mouse
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'Space' && !isRecording) {
+    event.preventDefault(); // Prevent scrolling
+    startRecording();
+  }
+});
+
+window.addEventListener('keyup', (event) => {
+  if (event.code === 'Space' && isRecording) {
+    stopRecording();
+  }
+});
+
+renderer.domElement.addEventListener('mousedown', (event) => {
+  if (event.button === 0 && !isRecording) { // Left mouse button
+    startRecording();
+  }
+});
+
+renderer.domElement.addEventListener('mouseup', (event) => {
+  if (event.button === 0 && isRecording) { // Left mouse button
+    stopRecording();
+  }
+});
+
+// Handle case when mouse leaves window while recording
+window.addEventListener('mouseleave', () => {
+  if (isRecording) {
+    stopRecording();
+  }
+});
 
 // Initial cleanup when page loads
 window.addEventListener('load', function() {
@@ -628,7 +628,7 @@ window.addEventListener('beforeunload', function() {
   if (sound.isPlaying) {
     sound.stop();
     // Try to delete the file
-    fetch('http://localhost:6969/delete-audio', {
+    fetch('https://10.53.1.209:6969/delete-audio', {
       method: 'POST',
       // Use keepalive to ensure request completes even during page unload
       keepalive: true

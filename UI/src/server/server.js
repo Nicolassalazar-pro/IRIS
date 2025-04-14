@@ -1,12 +1,14 @@
 const express = require('express');
 const multer = require('multer');
 const https = require('https');
+const http = require('http'); // Also create an HTTP server for redirect
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 
 const app = express();
 const port = 6969;
+const httpPort = 6970; // Port for HTTP redirects
 
 const httpsOptions = {
   key: fs.readFileSync(path.join(__dirname, 'certs', 'localhost+2-key.pem')),
@@ -19,7 +21,7 @@ const startupCleanup = () => {
   
   // Create uploads directory if it doesn't exist
   if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir);
+    fs.mkdirSync(uploadsDir, { recursive: true });
     console.log('Created uploads directory');
     return;
   }
@@ -39,7 +41,15 @@ const startupCleanup = () => {
 // Run cleanup at startup
 startupCleanup();
 
-app.use(cors());
+// Configure CORS to allow all origins with credentials
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow any origin
+    callback(null, true);
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 
 // Configure storage for uploaded files
@@ -47,7 +57,7 @@ const storage = multer.diskStorage({
   destination: function(req, file, cb) {
     const uploadDir = path.join(__dirname, 'uploads');
     if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir);
+      fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
@@ -65,6 +75,9 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
+    // Add CORS headers specifically for file serving
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   }
 }));
 
@@ -77,7 +90,7 @@ app.post('/upload-audio', upload.single('audio'), (req, res) => {
   res.json({
     success: true,
     message: 'File uploaded successfully',
-    audioUrl: `http://localhost:${port}/uploads/audio.wav`
+    audioUrl: `https://10.53.1.209:${port}/uploads/audio.wav`
   });
 });
 
@@ -137,9 +150,20 @@ app.get('/cleanup', (req, res) => {
 
 // Status endpoint
 app.get('/status', (req, res) => {
-  res.json({ status: 'Server is running' });
+  res.json({ status: 'Server is running with HTTPS' });
 });
 
+// Create HTTP server to redirect to HTTPS
+const httpApp = express();
+httpApp.get('*', (req, res) => {
+  res.redirect(`https://10.53.1.209:${port}${req.url}`);
+});
+
+// Start both servers
 https.createServer(httpsOptions, app).listen(port, '0.0.0.0', () => {
-  console.log(`HTTPS Server running at https://localhost:${port}`);
+  console.log(`HTTPS Server running at https://10.53.1.209:${port}`);
+});
+
+http.createServer(httpApp).listen(httpPort, '0.0.0.0', () => {
+  console.log(`HTTP Server running at https://10.53.1.209:${httpPort} (redirects to HTTPS)`);
 });

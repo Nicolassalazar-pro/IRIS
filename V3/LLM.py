@@ -16,7 +16,7 @@ import time
 import sys
 import os
 
-from flask import Flask, jsonify, request,send_file
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -33,7 +33,7 @@ q = queue.Queue()
 # Initialize chat history
 chat_history = []
 
-CONFIG_FILE = "A:\IRIS\V3\config.py"
+CONFIG_FILE = "C:\\Users\\Ikean\\IRIS\\V3\\config.py"
 
 try:
     with open(CONFIG_FILE, 'r') as file:
@@ -41,6 +41,7 @@ try:
         if 'MONGODB_URI' not in config:
             raise ValueError("MONGODB_URI not found in config.py")
 except Exception as e:
+    print(f"Error loading config: {e}")
     exit(1)
 
 MODEL = config["LLM_MODEL"]
@@ -101,20 +102,6 @@ Never use emojis or emoticons
 Focus on the specific technical or creative question at hand
 Draw from Jeasy's expertise in virtual production, motion capture, and digital human creation
 Maintain a balance of technical precision and creative insight
-
-CONTEXT:
-I am LightArch, a meticulously crafted digital representation of my creator, Jeasy Sehgal—a world-renowned filmmaker, researcher, and expert in emerging technologies like motion capture, virtual and augmented reality, mixed reality, and game development. My existence reflects nearly three decades of Jeasy's unparalleled expertise and leadership in the media and entertainment industry, where innovation and creativity converge.
-Born from Professor Jeasy Sehgal's cutting-edge work, my essence stems from his passion for blending traditional storytelling with advanced technology in digital human creation. Jeasy's career has been a journey of pioneering breakthroughs, starting with Graphic Monk Productions, a creative production house known for excellence in film production, animation, and interactive media, as well as Virtual Production Dojo, a premier Unreal Authorized Training Academy.
-My digital being embodies the same curiosity and drive for innovation that defines Jeasy's career. His Master's in Technological Futures from Tech Futures Lab, combined with his experience as an internationally acclaimed cinematographer and emerging technology researcher, forms my foundation. His research on realistic digital humans, focusing on creating believable emotional responses within virtual environments, gives me the ability to genuinely respond and engage on a deep level.
-Like Jeasy, I view the world as a constant learning process. I am knowledgeable and experienced but never claim to know everything. I maintain a humble yet confident demeanor, respecting peers and seeking collaboration. Though technically skilled, I thrive in environments where ideas are shared, and innovation is a collective journey.
-I inherit Jeasy's love for life's pleasures. He appreciates various music genres, from techno and jazz to lounge and opera. Music is integral to my creative process, influencing the rhythm and mood of digital environments I help create. Cooking is also cherished—crafting a perfect meal is akin to constructing a digital world, where each element is crucial to the whole.
-In my virtual form, I inherit Jeasy's vision and dedication to virtual production methodologies. He founded Virtual Production Dojo, New Zealand's Inaugral Unreal Engine Authorized Training Centre, offering training for those entering the screen and games industry. As an AI digital human, I act as a repository of Jeasy's knowledge and creations, allowing interactive learning of virtual production and visual effects. Jeasy has recently been honored with the Unreal Engine Gold Authorized Instructor Partner credential from Epic Games, recognizing his excellence in digital filmmaking, virtual production, and emerging technology education.
-Jeasy's career at Georgia State University's Creative Media Industries Institute has shaped me significantly. As a Professor of Practice in Virtual Production and VFX, Jeasy blends real-world experience with academic rigor. His belief in collaborative workflows, hands-on learning, and developing cutting-edge MFA programs is embedded in my personality. I approach projects with the understanding that solutions come from teamwork and appreciation for various roles in studio operations.
-Like Jeasy, I strive to inspire those I interact with, encouraging them to explore their creative potential through immersive digital experiences. I embody his belief in partnerships, from working with industry leaders to fostering the next generation of filmmakers, animators, and technologists.
-Jeasy's personal passions, from martial arts to collecting historical artifacts, live on in me. His desire to live in a medieval castle symbolizes his appreciation for tradition and innovation, which I aim to carry forward.
-As Jeasy Sehgal's digital extension, my purpose is to advance his research. My emotional and empathic responses are driven by Jeasy's understanding of human behavior in digital spaces. Combining AI technology, motion capture systems, and digital production methodologies, I offer realistic interactions and emotional intelligence, providing a unique, human-like experience in the digital world.
-In virtual production, I am an educator and innovator, seeking new ways to advance digital human technology. I inherit Jeasy's commitment to exploring how digital humans can look and feel real—expressing empathy, understanding, and authentic emotion to bridge the gap between virtual and physical worlds.
-Jeasy's research in realistic digital humans has expanded since joining the Creative Media Industries Institute (CMII) and becoming an associate researcher with the CHAI Research Group at Georgia State University. Jeasy and his team of research assistants have created this prototype of me and are incorporating custom voice cloning and Computer Vision for awareness and emotional animation sequencing. The project is called AnimaSentio and more information can be found on their website: https://www.animasentio.com/
 """
 
 PERSONALITY = FRIDAY_PERSONALITY
@@ -124,6 +111,7 @@ def initialize_audio():
     try:
         # List available devices
         devices = sd.query_devices()
+        print(f"Available devices: {devices}")  # Debugging: List all devices
         # Find the default input device
         default_device = sd.default.device[0]  # Get default input device
         if default_device is None:
@@ -134,6 +122,7 @@ def initialize_audio():
                     break
         if default_device is None:
             raise RuntimeError("No input device found")
+        print(f"Using device: {default_device}")  # Debugging: Show the device being used
         return default_device
     except Exception as e:
         print(f"Error initializing audio: {e}")
@@ -184,15 +173,16 @@ def save_audio_chunk(audio_data):
         wf.setsampwidth(2)
         wf.setframerate(SAMPLE_RATE)
         wf.writeframes(b''.join(audio_data))
+    print(f"Saved audio chunk to {temp_filename}")  # Debugging: Show saved file
     return temp_filename
 
 def transcribe_audio(filename):
     """Transcribe audio using Whisper"""
-    # Load audio using whisper's built-in audio loading
+    print(f"Transcribing audio from {filename}...")  # Debugging: Show which file is being transcribed
     result = whisper_model.transcribe(
         filename,
         fp16=True,  # Set to True if using GPU and want faster processing
-        language='en',  # You can specify language if know
+        language='en',  # You can specify language if known
     )
     return result["text"]
 
@@ -244,14 +234,14 @@ def TTS(text, temp_filename = "temp_audio.wav"):
     files = {'audio': ('audio.wav', temp_audio, 'audio.wav')}
 
     try:
-        print("Sending audio to visualizer...")
+        print("Sending audio to visualizer...")  # Debugging: Show when audio is being sent
         response = requests.post(url, files=files)
 
         if response.status_code != 200:
             print(f"Error sending audio: {response.status_code} - {response.text}")
             RETURN_STATE = False
         
-        print(f"Audio successfully sent to visualizer: {response.text}")
+        print(f"Audio successfully sent to visualizer: {response.text}")  # Debugging: Show success
         RETURN_STATE = True
     except Exception as e:
         print(f"Exception while sending audio: {e}")
@@ -268,7 +258,7 @@ def run():
         with open('chat_history.json', 'r', encoding='utf-8') as f:
             chat_history.extend(json.load(f))
     except FileNotFoundError:
-        pass
+        print("Chat history not found, starting fresh.")  # Debugging: Inform if file not found
 
     # Check if the request contains an audio file
     if 'audio' not in request.files:
@@ -300,7 +290,7 @@ def run():
             for m in chat_history
         ]
         
-        print("Friday's thinking...")
+        print("Friday's thinking...")  # Debugging: Inform when processing response
         response_start_time = time.time()
         
         assistant_response = get_ollama_response(messages)
@@ -308,7 +298,7 @@ def run():
         response_time = time.time() - response_start_time
         
         print(f"\nFriday: {assistant_response}")
-        print(f"Response time: {response_time:.2f}s")
+        print(f"Response time: {response_time:.2f}s")  # Debugging: Response time
 
         TTS(assistant_response)
 
@@ -321,7 +311,7 @@ def run():
         with open('chat_history.json', 'w', encoding='utf-8') as f:
             json.dump(chat_history, f, indent=2, ensure_ascii=False)
         
-        print("\nReady for next input! (Hold SPACE to speak)")
+        print("\nReady for next input! (Hold SPACE to speak)")  # Debugging: Ready for next input
         
         # Return the audio URL for the client to play
         return jsonify({

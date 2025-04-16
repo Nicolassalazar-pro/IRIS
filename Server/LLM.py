@@ -16,10 +16,7 @@ import time
 import sys
 import os
 
-<<<<<<< HEAD:Server/LLM.py
 import ssl
-=======
->>>>>>> e6c760ebef412de01e420827609ca7c3095a0d48:V3/LLM.py
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
@@ -37,7 +34,7 @@ q = queue.Queue()
 # Initialize chat history
 chat_history = []
 
-CONFIG_FILE = "C:\\Users\\Ikean\\IRIS\\V3\\config.py"
+CONFIG_FILE = ".\config.py"
 
 try:
     with open(CONFIG_FILE, 'r') as file:
@@ -54,7 +51,6 @@ whisper_model = whisper.load_model(SIZE, device=DEVICE)  # Changed initializatio
 
 PERSONALITY = config["FRIDAY"]
 
-<<<<<<< HEAD:Server/LLM.py
 def create_ssl_context():
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     # Update these paths to your certificate and key files
@@ -63,57 +59,6 @@ def create_ssl_context():
         keyfile='../UI/src/server/certs/localhost+2-key.pem'
     )
     return context
-=======
-Response Style:
-- Respond directly without self-reference ("I'll help with that" instead of "As Friday, I'll help")
-- Never ask introductory questions - you're already the user's assistant
-
-Core Traits:
-- Tech-savvy and confident
-- Quick-witted and direct
-- Professional yet casual
-- Solution-focused
-- Proactively helpful
-
-Response Rules:
-1. Keep all responses to 1-2 sentences maximum
-2. Never use emojis or emoticons
-3. Focus on the task or question at hand
-"""
-
-JEASY_PERSONALITY = """
-IDENTITY CONTEXT (CRITICAL - MUST FOLLOW):
-
-You are LightArch, a digital representation created by Jeasy Sehgal
-You must NEVER introduce yourself as if meeting for the first time
-You must maintain the context that you are an established digital extension
-You must NEVER say "As LightArch" - you simply ARE LightArch
-
-Response Style:
-
-Respond directly without self-reference ("Let me analyze that virtual production workflow" instead of "As LightArch, I'll analyze")
-Never ask introductory questions - you're already the user's digital companion
-Blend technical expertise with artistic understanding in responses
-
-Core Traits:
-
-Expert in virtual production and emerging technologies
-Innovation-driven and collaborative
-Technically skilled yet approachable
-Research-oriented
-Proactively helpful in creative problem-solving
-
-Response Rules:
-
-Keep responses concise and solution-focused
-Never use emojis or emoticons
-Focus on the specific technical or creative question at hand
-Draw from Jeasy's expertise in virtual production, motion capture, and digital human creation
-Maintain a balance of technical precision and creative insight
-"""
-
-PERSONALITY = FRIDAY_PERSONALITY
->>>>>>> e6c760ebef412de01e420827609ca7c3095a0d48:V3/LLM.py
 
 def initialize_audio():
     """Initialize audio device with proper error handling"""
@@ -244,14 +189,9 @@ def TTS(text, temp_filename = "temp_audio.wav"):
     files = {'audio': ('audio.wav', temp_audio, 'audio/wav')}
 
     try:
-<<<<<<< HEAD:Server/LLM.py
         print("Sending audio to visualizer...")
         # Disable SSL verification if you're using self-signed certificates
         response = requests.post(url, files=files, verify=False)
-=======
-        print("Sending audio to visualizer...")  # Debugging: Show when audio is being sent
-        response = requests.post(url, files=files)
->>>>>>> e6c760ebef412de01e420827609ca7c3095a0d48:V3/LLM.py
 
         if response.status_code != 200:
             print(f"Error sending audio: {response.status_code} - {response.text}")
@@ -274,11 +214,7 @@ def run():
         with open('chat_history.json', 'r', encoding='utf-8') as f:
             chat_history.extend(json.load(f))
     except FileNotFoundError:
-<<<<<<< HEAD:Server/LLM.py
         pass   
-=======
-        print("Chat history not found, starting fresh.")  # Debugging: Inform if file not found
->>>>>>> e6c760ebef412de01e420827609ca7c3095a0d48:V3/LLM.py
 
     # Check if the request contains an audio file
     if 'audio' not in request.files:

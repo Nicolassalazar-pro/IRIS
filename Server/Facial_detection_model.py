@@ -32,6 +32,13 @@ import cv2
 import sys
 import os
 
+import ssl
+from flask import Flask, jsonify, request, send_file
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app, supports_credentials=True)
+
 CONFIG_FILE = "config.py"
 
 # Set up logging
@@ -72,10 +79,6 @@ q = queue.Queue()
 chat_history = []
 Current_Person = 'PersonID_XKl6SYJx'
 
-#os.system("cls")
-
-#print("\n=== Initializing Friday Voice Chat System ===")
-#print("📝 Loading Whisper model...")
 whisper_model = whisper.load_model(config["WHISPER_SIZE"], device=DEVICE)
 
 @contextmanager
@@ -953,11 +956,7 @@ def process_frame(frame, face_encodings, face_identifiers, awaiting_first_enroll
     
     # Detect faces
     face_locations = face_recognition.face_locations(rgb_small_frame)
-
     current_face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
-
-    cache_path = os.path.join(CACHE_DIR, config["GROUP_JSON_NAME"])
-    
     
     for face_encoding, face_location in zip(current_face_encodings, face_locations):
         # Scale coordinates back to original size
@@ -965,45 +964,32 @@ def process_frame(frame, face_encodings, face_identifiers, awaiting_first_enroll
         scaled_location = (top, right, bottom, left)
         
         if awaiting_first_enrollment:
-            name = "First Face - Enrolling..."
-            color = (255, 165, 0)  # Orange
-            
             if enroll_face(frame, scaled_location, collection):
                 face_encodings, face_identifiers = generate_face_encodings()
                 first_face_enrolled = True
         else:
-            # Check if we have any encodings to compare against
+            # Check for known faces
             if face_encodings:
                 matches = face_recognition.compare_faces(face_encodings, face_encoding)
                 if True in matches:
                     first_match_index = matches.index(True)
-                    ID_groups = safe_read_json(cache_path, default_value={})
+                    ID_groups = safe_read_json(os.path.join(CACHE_DIR, config["GROUP_JSON_NAME"]), default_value={})
                     name = find_person_id(ID_groups, str(Path(face_identifiers[first_match_index])))
-                    color = (0, 255, 0)  # Green
+                    global Current_Person
+                    Current_Person = name
                 else:
-                    name = "Unknown - Enrolling..."
-                    color = (0, 0, 255)  # Red
+                    # Enroll new face
                     if enroll_face(frame, scaled_location, collection):
                         face_encodings, face_identifiers = generate_face_encodings()
             else:
-                name = "Unknown - Enrolling..."
-                color = (0, 0, 255)  # Red
+                # Enroll face if this is the first one
                 if enroll_face(frame, scaled_location, collection):
                     face_encodings, face_identifiers = generate_face_encodings()
-        
-        # Draw box and label based on configuration
-        if config['SHOW_BOUNDING_BOX']:
-            cv2.rectangle(display_frame, (left, top), (right, bottom), color, 2)
-        
-        if config['SHOW_LABELS']:
-            cv2.putText(display_frame, name, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-        
-        Current_Person = name
     
     return display_frame, first_face_enrolled, face_encodings, face_identifiers
 
 def face_detect(camera, face_encodings, face_identifiers, awaiting_first_enrollment, collection):
-    while True:
+    while True: 
         success, frame = camera.read()
         if not success:
             break
@@ -1023,12 +1009,22 @@ def face_detect(camera, face_encodings, face_identifiers, awaiting_first_enrollm
         if keyboard.is_pressed('esc'):
             break
 
+ 
+def create_ssl_context():
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # Update these paths to your certificate and key files
+    context.load_cert_chain(
+        certfile='../UI/src/server/certs/localhost+2.pem', 
+        keyfile='../UI/src/server/certs/localhost+2-key.pem'
+    )
+    return context
 
 def initialize_audio():
     """Initialize audio device with proper error handling"""
     try:
         # List available devices
         devices = sd.query_devices()
+        print(f"Available devices: {devices}")  # Debugging: List all devices
         # Find the default input device
         default_device = sd.default.device[0]  # Get default input device
         if default_device is None:
@@ -1039,9 +1035,10 @@ def initialize_audio():
                     break
         if default_device is None:
             raise RuntimeError("No input device found")
+        print(f"Using device: {default_device}")  # Debugging: Show the device being used
         return default_device
     except Exception as e:
-        logging.error(f"Error initializing audio: {e}")
+        print(f"Error initializing audio: {e}")
         sys.exit(1)
 
 def timestamp():
@@ -1049,18 +1046,22 @@ def timestamp():
     tz = pytz.timezone('US/Eastern')
     return datetime.datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S EST')
 
-def get_ollama_response(messages,collection):
+def get_ollama_response(messages, person_id, collection):
     try:
-
-        Current_Person_Context = collection.find_one({"_id": Current_Person})
-
-        Info_Context = f'This is your context window in regards to who you are speaking to. First name: {Current_Person_Context["first_name"]}; Last name: {Current_Person_Context["last_name"]}; Age : {Current_Person_Context["age"]}.'
-        General_Context = f'This is your context window in regards about the person you are speaking to. Context:{Current_Person_Context["context"]}'
+        # Get context for the person
+        person_context = collection.find_one({"_id": person_id})
+        
+        if person_context:
+            info_context = f'This is your context window in regards to who you are speaking to. First name: {person_context["first_name"]}; Last name: {person_context["last_name"]}; Age : {person_context["age"]}.'
+            general_context = f'This is your context window in regards about the person you are speaking to. Context:{person_context["context"]}'
+        else:
+            info_context = "You are speaking to someone you don't have complete information about yet."
+            general_context = "Try to learn more about this person through conversation."
 
         context_messages = [
-            {"role": "system", "content": Info_Context},
+            {"role": "system", "content": info_context},
             {"role": "system", "content": 'If any of the previous fields are not filled, you should prompt the person for the information, But you can not prompt the user for more than one piece of information per question asked.'},
-            {"role": "system", "content": General_Context},
+            {"role": "system", "content": general_context},
             {"role": "system", "content": PERSONALITY},
             {"role": "system", "content": "Remember: Keep responses short and direct. No emojis or multiple questions."},
             *messages
@@ -1069,7 +1070,7 @@ def get_ollama_response(messages,collection):
         with open(os.devnull, 'w') as devnull:
             with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
                 response = ollama.chat(
-                    model = config["LLM_MODEL"],  # Changed model name
+                    model = config["LLM_MODEL"],
                     messages=context_messages,
                     options={
                         "mirostat": config["MIROSTAT"],
@@ -1085,7 +1086,7 @@ def get_ollama_response(messages,collection):
     except Exception as e:
         return f"Looks like we hit a snag: {str(e)}"
 
-def audio_callback(indata, arg2, arg3, arg4):
+def audio_callback(indata, frames, time, status):
     """Callback for audio recording"""
     if keyboard.is_pressed('space'):
         q.put(bytes(indata))
@@ -1098,15 +1099,16 @@ def save_audio_chunk(audio_data):
         wf.setsampwidth(config["SAMPWIDTH"])
         wf.setframerate(config["SAMPLE_RATE"])
         wf.writeframes(b''.join(audio_data))
+    print(f"Saved audio chunk to {temp_filename}")  # Debugging: Show saved file
     return temp_filename
 
 def transcribe_audio(filename):
     """Transcribe audio using Whisper"""
-    # Load audio using whisper's built-in audio loading
+    print(f"Transcribing audio from {filename}...")  # Debugging: Show which file is being transcribed
     result = whisper_model.transcribe(
         filename,
         fp16=True,  # Set to True if using GPU and want faster processing
-        language='en',  # You can specify language if know
+        language='en',  # You can specify language if known
     )
     return result["text"]
 
@@ -1153,19 +1155,21 @@ def TTS(text, temp_filename = "temp_audio.wav"):
     engine.save_to_file(text, output_path)
     engine.runAndWait()
     
-    url = config["UI_URL"]
+    # Make sure to use HTTPS URL here
+    url = "https://10.53.1.209:6969/upload-audio"
     temp_audio = open(output_path, 'rb')
-    files = {'audio': ('audio.wav', temp_audio, 'audio.wav')}
+    files = {'audio': ('audio.wav', temp_audio, 'audio/wav')}
 
     try:
         print("Sending audio to visualizer...")
-        response = requests.post(url, files=files)
+        # Disable SSL verification if you're using self-signed certificates
+        response = requests.post(url, files=files, verify=False)
 
         if response.status_code != 200:
             print(f"Error sending audio: {response.status_code} - {response.text}")
             RETURN_STATE = False
         
-        print(f"Audio successfully sent to visualizer: {response.text}")
+        print(f"Audio successfully sent to visualizer: {response.text}")  # Debugging: Show success
         RETURN_STATE = True
     except Exception as e:
         print(f"Exception while sending audio: {e}")
@@ -1176,77 +1180,46 @@ def TTS(text, temp_filename = "temp_audio.wav"):
 
     return RETURN_STATE
 
-def LLM(stream,collection):
+mongo_collection = None
+face_encodings = None
+face_identifiers = None
+whisper_model = None
+chat_history = []
 
-    with stream:
-        while True:
-            if keyboard.is_pressed('space'):
-                recording_start_time = time.time()
-                while keyboard.is_pressed('space'):
-                    elapsed_time = time.time() - recording_start_time
-                    sys.stdout.write(f'\r Recording... [{elapsed_time:.1f}s] [SPACE held] ')
-                    sys.stdout.flush()
-                    time.sleep(0.1)
-                
-                sys.stdout.write('\r' + ' ' * 50 + '\r')
-                sys.stdout.flush()
-                
-                print("\n Processing speech...")
-                text = process_audio()
-                
-                if text:
-                    print(f"\n You: {text}")
-                    
-                    chat_history.append({
-                        "role": "user",
-                        "content": text,
-                        "timestamp": timestamp()
-                    })
-
-                    #Current_Person
-                    messages = [
-                        {"role": m["role"], "content": m["content"]} 
-                        for m in chat_history
-                    ]
-                    
-                    print("Friday's thinking...")
-                    response_start_time = time.time()
-                    
-                    assistant_response = get_ollama_response(messages,collection)
-                    
-                    response_time = time.time() - response_start_time
-                    
-                    print(f"\nFriday: {assistant_response}")
-                    print(f"Response time: {response_time:.2f}s")
-
-                    TTS(assistant_response)
-
-                    chat_history.append({
-                        "role": "assistant",
-                        "content": assistant_response,
-                        "timestamp": timestamp()
-                    })
-                    
-                    with open('chat_history.json', 'w', encoding='utf-8') as f:
-                        json.dump(chat_history, f, indent=2, ensure_ascii=False)
-                    
-                    print("\nReady for next input! (Hold SPACE to speak)")
-            
-            if keyboard.is_pressed('esc'):
-                break
-            
-            time.sleep(0.1)
-
-def main():
-    mongo_uri = config['MONGODB_URI']
-    if not mongo_uri:
-        logging.error("Please add your MongoDB URI to config.py")
-        exit(1)
-        
-    logging.info("Connecting to MongoDB...")
-    collection = connect_to_mongodb(mongo_uri)
-    logging.info("Connected to MongoDB!")
+# Initialize everything at startup instead of per-request
+@app.before_first_request
+def initialize():
+    global mongo_collection, face_encodings, face_identifiers, whisper_model, chat_history
     
+    # Set up logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('api.log'),
+            logging.StreamHandler()
+        ]
+    )
+    
+    # Load config
+    try:
+        with open(CONFIG_FILE, 'r') as file:
+            config = eval(file.read())
+            if 'MONGODB_URI' not in config:
+                raise ValueError("MONGODB_URI not found in config.py")
+    except Exception as e:
+        logging.error(f"Error with config file: {e}")
+        return
+    
+    # Connect to MongoDB
+    try:
+        mongo_collection = connect_to_mongodb(config['MONGODB_URI'])
+        logging.info("Connected to MongoDB!")
+    except Exception as e:
+        logging.error(f"MongoDB connection error: {e}")
+        return
+    
+    # Initialize directories
     current_dir = os.path.dirname(os.path.abspath(__file__))
     watch_path = os.path.join(current_dir, PROFILE_DIR)
     
@@ -1254,98 +1227,152 @@ def main():
         os.makedirs(watch_path)
         logging.info(f"Created profile directory: {watch_path}")
     
-    # Create profiles from JSON before starting event handler
-    event_handler = create_event_handler(watch_path, collection)
-    profile_results = create_profiles_from_json(collection)
+    # Create profiles from JSON
+    profile_results = create_profiles_from_json(mongo_collection)
     
     if profile_results['created'] > 0:
         logging.info(f"Successfully created {profile_results['created']} new profile(s)")
     if profile_results['deleted'] > 0:
         logging.info(f"Removed {profile_results['deleted']} obsolete profile(s)")
-    if profile_results['errors']:
-        logging.warning("Errors encountered during profile operations:")
-        for error in profile_results['errors']:
-            logging.warning(f"  - {error}")
-
-    # Try loading cached encodings first
-    face_encodings, face_identifiers = load_cached_encodings()
     
-    # If no cache, check enrollment directory
+    # Load face encodings
+    face_encodings, face_identifiers = load_cached_encodings()
     if not face_encodings:
         face_encodings, face_identifiers = generate_face_encodings()
-
-    awaiting_first_enrollment = not face_encodings
-    if awaiting_first_enrollment:
-        logging.warning("No enrolled faces found. Waiting for first face to enroll...")
     
-    # Initialize camera
-    camera = cv2.VideoCapture(config["CAPTURE_CAM_INDEX"])
+    # Load Whisper model
+    whisper_model = whisper.load_model(config["WHISPER_SIZE"], device=DEVICE)
     
-    if not camera.isOpened():
-        logging.error("Failed to access camera")
-        return
-        
-    camera.set(3, config["CAPTURE_WIDTH"])
-    camera.set(4, config["CAPTURE_HEIGHT"])
-
-    # Set up audio stream
-    input_device = initialize_audio()
-    
-    # Set up audio stream with explicit device
-    stream = sd.RawInputStream(
-        device=input_device,  # Use the found input device
-        samplerate=config["SAMPLE_RATE"],
-        blocksize=config["BLOCKSIZE"],
-        dtype=DTYPE,
-        channels= config["NCHANNELS"],
-        callback=audio_callback
-    )
-
-    print("\n=== Friday Voice Chat Ready ===")
-    print("\nSystem Status:")
-    print(f'🎤 Speech: Whisper {config["WHISPER_SIZE"]} ({DEVICE} mode)')
-    print(f'🤖 Chat: {config["LLM_MODEL"]} (GPU auto-detection)')
-    
-    print("\nControls:")
-    print("- Press and HOLD SPACE to record speech")
-    print("- Release SPACE to process and get response")
-    print("- Press ESC to exit")
-    print("\nFriday's ready to chat!")
-
-    # Load existing chat history
+    # Load chat history
     try:
         with open('chat_history.json', 'r', encoding='utf-8') as f:
             chat_history.extend(json.load(f))
     except FileNotFoundError:
-        pass
+        logging.info("No chat history found, starting fresh")
 
-    Clustering_Module = Observer()
-    Clustering_Module.schedule(event_handler, watch_path, recursive=False)
+# Main API endpoint that can handle audio, images, or both
+@app.route('/process', methods=['POST'])
+def process_data():
+    global mongo_collection, face_encodings, face_identifiers, chat_history
     
-    FaceID_Module = threading.Thread(target=face_detect, args=(camera, face_encodings, face_identifiers, awaiting_first_enrollment, collection))
-    LLM_Module = threading.Thread(target=LLM, args=(stream,collection))
+    # Prepare response data
+    response_data = {
+        "success": True,
+        "audio_processed": False,
+        "images_processed": False,
+        "detected_faces": [],
+        "transcription": None,
+        "assistant_response": None
+    }
+    
+    # Check for images in the request
+    image_files = []
+    if 'images' in request.files:
+        image_files = request.files.getlist('images')
+        
+    # Process images if present
+    if image_files and any(img.filename != '' for img in image_files):
+        processed_images = []
+        detected_faces = []
+        
+        for image_file in image_files:
+            if image_file.filename == '':
+                continue
+                
+            # Read the image data
+            file_bytes = np.frombuffer(image_file.read(), np.uint8)
+            frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+            
+            if frame is None:
+                continue
+                
+            # Process the frame with your face detection function
+            display_frame, first_face_enrolled, updated_encodings, updated_identifiers = process_frame(
+                frame, 
+                face_encodings, 
+                face_identifiers, 
+                not face_encodings,  # awaiting_first_enrollment
+                mongo_collection
+            )
+            
+            # Update encodings if they changed
+            if first_face_enrolled or updated_encodings != face_encodings:
+                face_encodings = updated_encodings
+                face_identifiers = updated_identifiers
+            
+            # Get information about detected faces in this image
+            # This assumes process_frame sets Current_Person or returns face info
+            # Adapt based on your actual implementation
+            if Current_Person and Current_Person != 'PersonID_XKl6SYJx':
+                profile = mongo_collection.find_one({"_id": Current_Person})
+                if profile:
+                    detected_faces.append({
+                        "person_id": Current_Person,
+                        "first_name": profile.get("first_name", ""),
+                        "last_name": profile.get("last_name", ""),
+                    })
+            
+            processed_images.append(True)
+        
+        if processed_images:
+            response_data["images_processed"] = True
+            response_data["detected_faces"] = detected_faces
+    
+    # Process audio if present
+    if 'audio' in request.files:
+        audio_file = request.files['audio']
+        if audio_file.filename != '':
+            # Save audio temporarily
+            temp_filename = save_audio_chunk(audio_file)
+            
+            # Transcribe audio
+            text = transcribe_audio(temp_filename)
+            os.remove(temp_filename)
+            
+            if text:
+                response_data["audio_processed"] = True
+                response_data["transcription"] = text
+                
+                # Add to chat history
+                chat_history.append({
+                    "role": "user",
+                    "content": text,
+                    "timestamp": timestamp()
+                })
+                
+                # Get AI response
+                messages = [
+                    {"role": m["role"], "content": m["content"]} 
+                    for m in chat_history
+                ]
+                
+                # Use detected person for context if available
+                person_id = Current_Person
+                if response_data["detected_faces"]:
+                    person_id = response_data["detected_faces"][0]["person_id"]
+                
+                # Get response - modify your get_ollama_response to use person_id
+                assistant_response = get_ollama_response(messages, person_id, mongo_collection)
+                response_data["assistant_response"] = assistant_response
+                
+                # Generate audio response
+                TTS(assistant_response)
+                
+                # Add to chat history
+                chat_history.append({
+                    "role": "assistant",
+                    "content": assistant_response,
+                    "timestamp": timestamp()
+                })
+                
+                # Save updated chat history
+                with open('chat_history.json', 'w', encoding='utf-8') as f:
+                    json.dump(chat_history, f, indent=2, ensure_ascii=False)
+    
+    return jsonify(response_data)
 
-    logging.info(f"Monitoring {watch_path} for new images...")
 
-    Clustering_Module.start()
-    FaceID_Module.start()
-    LLM_Module.start()
 
-    while True:
-        time.sleep(1)     
-        if keyboard.is_pressed('esc'):
-            logging.info("Stopping everything")
-            Clustering_Module.stop()
-            Clustering_Module.join()
-            FaceID_Module.join()
-            LLM_Module.join()
-            camera.release()
-            cv2.destroyAllWindows()
-            sys.exit()
-            quit()
-            os.system("cls")
-            break
-
-if __name__ == "__main__":
-    main()
-
+if __name__ == '__main__':
+    ssl_context = create_ssl_context()
+    app.run(host='0.0.0.0', port=2002, ssl_context=ssl_context)
